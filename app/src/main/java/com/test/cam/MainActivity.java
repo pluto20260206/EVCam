@@ -28,10 +28,16 @@ import androidx.fragment.app.FragmentTransaction;
 
 import com.google.android.material.navigation.NavigationView;
 import com.test.cam.camera.MultiCameraManager;
+import com.test.cam.dingtalk.DingTalkApiClient;
+import com.test.cam.dingtalk.DingTalkApiClient;
+import com.test.cam.dingtalk.VideoUploadService;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -78,6 +84,11 @@ public class MainActivity extends AppCompatActivity {
     private volatile boolean logcatRunning = false;
     private boolean logcatStarted = false;
 
+    // 远程录制相关
+    private String remoteConversationId;  // 钉钉会话 ID
+    private android.os.Handler autoStopHandler;  // 自动停止录制的 Handler
+    private Runnable autoStopRunnable;  // 自动停止录制的 Runnable
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -85,6 +96,9 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         setupNavigationDrawer();
+
+        // 初始化自动停止 Handler
+        autoStopHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
         // 权限检查，但不立即初始化摄像头
         // 等待TextureView准备好后再初始化
@@ -184,6 +198,9 @@ public class MainActivity extends AppCompatActivity {
             } else if (itemId == R.id.nav_playback) {
                 // 显示回看界面
                 showPlaybackInterface();
+            } else if (itemId == R.id.nav_remote_view) {
+                // 显示远程查看界面
+                showRemoteViewInterface();
             }
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
@@ -220,6 +237,21 @@ public class MainActivity extends AppCompatActivity {
         FragmentManager fragmentManager = getSupportFragmentManager();
         FragmentTransaction transaction = fragmentManager.beginTransaction();
         transaction.replace(R.id.fragment_container, new PlaybackFragment());
+        transaction.commit();
+    }
+
+    /**
+     * 显示远程查看界面
+     */
+    private void showRemoteViewInterface() {
+        // 隐藏录制布局，显示Fragment容器
+        recordingLayout.setVisibility(View.GONE);
+        fragmentContainer.setVisibility(View.VISIBLE);
+
+        // 显示RemoteViewFragment
+        FragmentManager fragmentManager = getSupportFragmentManager();
+        FragmentTransaction transaction = fragmentManager.beginTransaction();
+        transaction.replace(R.id.fragment_container, new RemoteViewFragment());
         transaction.commit();
     }
 
@@ -515,10 +547,170 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 远程录制（由钉钉指令触发）
+     * 自动录制 1 分钟视频并上传到钉钉
+     */
+    public void startRemoteRecording(String conversationId) {
+        this.remoteConversationId = conversationId;
+
+        appendLog("收到远程录制指令，开始录制 1 分钟视频...");
+
+        // 如果正在录制，先停止
+        if (cameraManager != null && cameraManager.isRecording()) {
+            cameraManager.stopRecording();
+            try {
+                Thread.sleep(500);  // 等待停止完成
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // 开始录制
+        if (cameraManager != null) {
+            boolean success = cameraManager.startRecording();
+            if (success) {
+                appendLog("远程录制已开始");
+
+                // 设置 1 分钟后自动停止
+                autoStopRunnable = () -> {
+                    appendLog("1 分钟录制完成，正在停止...");
+                    cameraManager.stopRecording();
+
+                    // 等待录制完全停止
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        uploadRecordedVideos();
+                    }, 1000);
+                };
+
+                autoStopHandler.postDelayed(autoStopRunnable, 60 * 1000);  // 60 秒
+            } else {
+                appendLog("远程录制启动失败");
+                sendErrorToRemote("录制启动失败");
+            }
+        } else {
+            appendLog("摄像头未初始化");
+            sendErrorToRemote("摄像头未初始化");
+        }
+    }
+
+    /**
+     * 上传录制的视频到钉钉
+     */
+    private void uploadRecordedVideos() {
+        appendLog("开始上传视频到钉钉...");
+
+        // 获取录制的视频文件
+        File videoDir = new File(android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DCIM), "MultiCam");
+
+        if (!videoDir.exists() || !videoDir.isDirectory()) {
+            appendLog("视频目录不存在");
+            sendErrorToRemote("视频目录不存在");
+            return;
+        }
+
+        // 获取最新的视频文件（最近 1 分钟内创建的）
+        File[] files = videoDir.listFiles((dir, name) -> name.endsWith(".mp4"));
+        if (files == null || files.length == 0) {
+            appendLog("没有找到视频文件");
+            sendErrorToRemote("没有找到视频文件");
+            return;
+        }
+
+        // 筛选最近 1 分钟内的文件
+        long currentTime = System.currentTimeMillis();
+        List<File> recentFiles = new ArrayList<>();
+        for (File file : files) {
+            if (currentTime - file.lastModified() < 90 * 1000) {  // 90 秒内
+                recentFiles.add(file);
+            }
+        }
+
+        if (recentFiles.isEmpty()) {
+            appendLog("没有找到最近录制的视频");
+            sendErrorToRemote("没有找到最近录制的视频");
+            return;
+        }
+
+        appendLog("找到 " + recentFiles.size() + " 个视频文件");
+
+        // 获取 RemoteViewFragment 中的 API 客户端
+        FragmentManager fragmentManager = getSupportFragmentManager();
+        Fragment fragment = fragmentManager.findFragmentById(R.id.fragment_container);
+
+        if (fragment instanceof RemoteViewFragment) {
+            RemoteViewFragment remoteFragment = (RemoteViewFragment) fragment;
+            DingTalkApiClient apiClient = remoteFragment.getApiClient();
+
+            if (apiClient != null && remoteConversationId != null) {
+                VideoUploadService uploadService = new VideoUploadService(this, apiClient);
+                uploadService.uploadVideos(recentFiles, remoteConversationId, new VideoUploadService.UploadCallback() {
+                    @Override
+                    public void onProgress(String message) {
+                        appendLog(message);
+                    }
+
+                    @Override
+                    public void onSuccess(String message) {
+                        appendLog(message);
+                        Toast.makeText(MainActivity.this, "视频上传成功", Toast.LENGTH_SHORT).show();
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        appendLog("上传失败: " + error);
+                        sendErrorToRemote("上传失败: " + error);
+                    }
+                });
+            } else {
+                appendLog("API 客户端未初始化");
+                sendErrorToRemote("API 客户端未初始化");
+            }
+        } else {
+            appendLog("RemoteViewFragment 未找到");
+            sendErrorToRemote("RemoteViewFragment 未找到");
+        }
+    }
+
+    /**
+     * 发送错误消息到钉钉
+     */
+    private void sendErrorToRemote(String error) {
+        if (remoteConversationId == null) {
+            return;
+        }
+
+        FragmentManager fragmentManager = getSupportFragmentManager();
+        Fragment fragment = fragmentManager.findFragmentById(R.id.fragment_container);
+
+        if (fragment instanceof RemoteViewFragment) {
+            RemoteViewFragment remoteFragment = (RemoteViewFragment) fragment;
+            DingTalkApiClient apiClient = remoteFragment.getApiClient();
+
+            if (apiClient != null) {
+                new Thread(() -> {
+                    try {
+                        apiClient.sendTextMessage(remoteConversationId, "录制失败: " + error);
+                        Log.d(TAG, "错误消息已发送到钉钉");
+                    } catch (Exception e) {
+                        Log.e(TAG, "发送错误消息失败", e);
+                    }
+                }).start();
+            }
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
         stopLogcatReader();
+
+        // 取消自动停止录制的任务
+        if (autoStopHandler != null && autoStopRunnable != null) {
+            autoStopHandler.removeCallbacks(autoStopRunnable);
+        }
+
         if (cameraManager != null) {
             cameraManager.release();
         }

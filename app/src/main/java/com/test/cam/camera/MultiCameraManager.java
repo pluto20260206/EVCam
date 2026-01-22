@@ -195,6 +195,50 @@ public class MultiCameraManager {
         recorders.put("left", new VideoRecorder(leftId));
         recorders.put("right", new VideoRecorder(rightId));
 
+        // 为每个录制器设置回调
+        RecordCallback recordCallback = new RecordCallback() {
+            @Override
+            public void onRecordStart(String cameraId) {
+                Log.d(TAG, "Recording started for camera " + cameraId);
+            }
+
+            @Override
+            public void onRecordStop(String cameraId) {
+                Log.d(TAG, "Recording stopped for camera " + cameraId);
+            }
+
+            @Override
+            public void onRecordError(String cameraId, String error) {
+                Log.e(TAG, "Recording error for camera " + cameraId + ": " + error);
+            }
+
+            @Override
+            public void onSegmentSwitch(String cameraId, int newSegmentIndex) {
+                Log.d(TAG, "Segment switch for camera " + cameraId + " to segment " + newSegmentIndex);
+                // 找到对应的 camera key 和 camera
+                for (Map.Entry<String, SingleCamera> entry : cameras.entrySet()) {
+                    if (entry.getValue().getCameraId().equals(cameraId)) {
+                        String key = entry.getKey();
+                        SingleCamera camera = entry.getValue();
+                        VideoRecorder recorder = recorders.get(key);
+
+                        if (camera != null && recorder != null) {
+                            // 更新录制 Surface 并重新创建会话
+                            camera.setRecordSurface(recorder.getSurface());
+                            camera.recreateSession();
+                            Log.d(TAG, "Recreated session for camera " + cameraId + " after segment switch");
+                        }
+                        break;
+                    }
+                }
+            }
+        };
+
+        recorders.get("front").setCallback(recordCallback);
+        recorders.get("back").setCallback(recordCallback);
+        recorders.get("left").setCallback(recordCallback);
+        recorders.get("right").setCallback(recordCallback);
+
         Log.d(TAG, "Cameras initialized");
     }
 
@@ -276,8 +320,6 @@ public class MultiCameraManager {
             saveDir.mkdirs();
         }
 
-        String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-
         List<String> keys = getActiveCameraKeys();
         if (keys.isEmpty()) {
             Log.e(TAG, "No active cameras for recording");
@@ -291,7 +333,9 @@ public class MultiCameraManager {
             if (recorder == null) {
                 continue;
             }
-            String path = new File(saveDir, key + "_" + timestamp + ".mp4").getAbsolutePath();
+            // 每个摄像头使用当前时间戳生成文件名：日期_时间_摄像头位置.mp4
+            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            String path = new File(saveDir, timestamp + "_" + key + ".mp4").getAbsolutePath();
             // 只准备 MediaRecorder，获取 Surface
             if (!recorder.prepareRecording(path, RECORD_WIDTH, RECORD_HEIGHT)) {
                 prepareSuccess = false;

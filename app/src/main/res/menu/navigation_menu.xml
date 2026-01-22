@@ -8,4 +8,8 @@
         android:id="@+id/nav_playback"
         android:icon="@android:drawable/ic_menu_gallery"
         android:title="录制回看" />
+    <item
+        android:id="@+id/nav_remote_view"
+        android:icon="@android:drawable/ic_menu_upload"
+        android:title="远程查看" />
 </menu>

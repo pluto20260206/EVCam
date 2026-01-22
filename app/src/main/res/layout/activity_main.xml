@@ -48,15 +48,20 @@
                 android:minHeight="48dp"
                 android:layout_marginEnd="8dp" />
 
-            <TextView
+            <View
                 android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:text="日志"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold"
-                android:gravity="center_vertical" />
+                android:gravity="center_vertical"
+                android:layout_marginEnd="8dp" />
 
             <TextView
                 android:id="@+id/log_toggle"

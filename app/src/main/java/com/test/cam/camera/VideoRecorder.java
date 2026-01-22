@@ -4,7 +4,11 @@ import android.media.MediaRecorder;
 import android.util.Log;
 import android.view.Surface;
 
+import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /**
  * 视频录制管理类
@@ -23,7 +27,8 @@ public class VideoRecorder {
     private android.os.Handler segmentHandler;
     private Runnable segmentRunnable;
     private int segmentIndex = 0;
-    private String baseFilePath;  // 基础文件路径（不含序号）
+    private String saveDirectory;  // 保存目录
+    private String cameraPosition;  // 摄像头位置（front/back/left/right）
     private int recordWidth;
     private int recordHeight;
 
@@ -91,18 +96,23 @@ public class VideoRecorder {
             this.recordHeight = height;
             this.segmentIndex = 0;
 
-            // 生成基础文件路径（移除扩展名）
-            if (filePath.endsWith(".mp4")) {
-                this.baseFilePath = filePath.substring(0, filePath.length() - 4);
+            // 从文件路径中提取保存目录和摄像头位置
+            File file = new File(filePath);
+            this.saveDirectory = file.getParent();
+            String fileName = file.getName();
+            // 文件名格式：日期_时间_摄像头位置.mp4
+            // 提取摄像头位置（最后一个下划线后的部分，去掉.mp4）
+            int lastUnderscoreIndex = fileName.lastIndexOf('_');
+            if (lastUnderscoreIndex > 0 && fileName.endsWith(".mp4")) {
+                this.cameraPosition = fileName.substring(lastUnderscoreIndex + 1, fileName.length() - 4);
             } else {
-                this.baseFilePath = filePath;
+                this.cameraPosition = "unknown";
             }
 
-            // 生成第一段的文件路径
-            String segmentPath = generateSegmentPath(segmentIndex);
-            prepareMediaRecorder(segmentPath, width, height);
-            currentFilePath = segmentPath;
-            Log.d(TAG, "Camera " + cameraId + " prepared recording to: " + segmentPath);
+            // 使用传入的文件路径作为第一段
+            prepareMediaRecorder(filePath, width, height);
+            currentFilePath = filePath;
+            Log.d(TAG, "Camera " + cameraId + " prepared recording to: " + filePath);
             return true;
         } catch (IOException e) {
             Log.e(TAG, "Failed to prepare recording for camera " + cameraId, e);
@@ -115,14 +125,12 @@ public class VideoRecorder {
     }
 
     /**
-     * 生成分段文件路径
+     * 生成新的分段文件路径（使用当前时间戳）
      */
-    private String generateSegmentPath(int index) {
-        if (index == 0) {
-            return baseFilePath + ".mp4";
-        } else {
-            return baseFilePath + "_part" + index + ".mp4";
-        }
+    private String generateSegmentPath() {
+        String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        String fileName = timestamp + "_" + cameraPosition + ".mp4";
+        return new File(saveDirectory, fileName).getAbsolutePath();
     }
 
     /**
@@ -185,6 +193,7 @@ public class VideoRecorder {
 
     /**
      * 切换到下一段
+     * 注意：这个方法需要通过回调通知外部重新配置相机会话
      */
     private void switchToNextSegment() {
         try {
@@ -195,15 +204,21 @@ public class VideoRecorder {
                     Log.d(TAG, "Camera " + cameraId + " stopped segment " + segmentIndex + ": " + currentFilePath);
                 } catch (RuntimeException e) {
                     Log.e(TAG, "Error stopping segment for camera " + cameraId, e);
+                    // 即使停止失败，也继续尝试下一段
                 }
                 releaseMediaRecorder();
             }
 
-            // 准备下一段
+            // 准备下一段（使用新的时间戳）
             segmentIndex++;
-            String nextSegmentPath = generateSegmentPath(segmentIndex);
+            String nextSegmentPath = generateSegmentPath();
             prepareMediaRecorder(nextSegmentPath, recordWidth, recordHeight);
             currentFilePath = nextSegmentPath;
+
+            // 通知外部需要重新配置相机会话（因为 MediaRecorder 的 Surface 已经改变）
+            if (callback != null) {
+                callback.onSegmentSwitch(cameraId, segmentIndex);
+            }
 
             // 启动下一段录制
             mediaRecorder.start();

@@ -5,7 +5,11 @@
       "Bash(cmd /c gradlew.bat:*)",
       "Bash(cmd /c:*)",
       "Bash(e:)",
-      "Bash(./gradlew.bat assembleDebug:*)"
+      "Bash(./gradlew.bat assembleDebug:*)",
+      "Bash(git clone:*)",
+      "Bash(cat:*)",
+      "Bash(del:*)",
+      "Bash(e:\\e5\\cam-master\\cam\\gradlew.bat assembleDebug:*)"
     ],
     "deny": [],
     "ask": []

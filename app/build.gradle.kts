@@ -4,9 +4,7 @@ plugins {
 
 android {
     namespace = "com.test.cam"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.test.cam"
@@ -40,6 +38,17 @@ dependencies {
     implementation(libs.constraintlayout)
     implementation(libs.recyclerview)
     implementation(libs.cardview)
+
+    // 钉钉官方 Stream SDK
+    implementation("com.dingtalk.open:app-stream-client:1.3.12")
+
+    // 网络请求和 WebSocket
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // JSON 解析
+    implementation("com.google.code.gson:gson:2.10.1")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

@@ -2,11 +2,15 @@ package com.test.cam;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -75,6 +79,9 @@ public class VideoAdapter extends RecyclerView.Adapter<VideoAdapter.VideoViewHol
                 .format(new Date(lastModified));
         holder.videoDate.setText(dateStr);
 
+        // 加载视频缩略图（异步）
+        loadThumbnail(videoFile, holder.videoThumbnail);
+
         // 播放按钮
         holder.btnPlay.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -122,7 +129,51 @@ public class VideoAdapter extends RecyclerView.Adapter<VideoAdapter.VideoViewHol
         return videoFiles.size();
     }
 
+    /**
+     * 异步加载视频缩略图
+     */
+    private void loadThumbnail(File videoFile, ImageView imageView) {
+        // 使用AsyncTask在后台线程加载缩略图
+        new AsyncTask<Void, Void, Bitmap>() {
+            @Override
+            protected Bitmap doInBackground(Void... voids) {
+                MediaMetadataRetriever retriever = null;
+                try {
+                    retriever = new MediaMetadataRetriever();
+                    retriever.setDataSource(videoFile.getAbsolutePath());
+
+                    // 获取视频第一帧作为缩略图
+                    Bitmap bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+
+                    return bitmap;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return null;
+                } finally {
+                    if (retriever != null) {
+                        try {
+                            retriever.release();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+
+            @Override
+            protected void onPostExecute(Bitmap bitmap) {
+                if (bitmap != null) {
+                    imageView.setImageBitmap(bitmap);
+                } else {
+                    // 如果无法加载缩略图，显示默认图标
+                    imageView.setImageResource(android.R.drawable.ic_media_play);
+                }
+            }
+        }.execute();
+    }
+
     static class VideoViewHolder extends RecyclerView.ViewHolder {
+        ImageView videoThumbnail;
         TextView videoName;
         TextView videoSize;
         TextView videoDate;
@@ -131,6 +182,7 @@ public class VideoAdapter extends RecyclerView.Adapter<VideoAdapter.VideoViewHol
 
         public VideoViewHolder(@NonNull View itemView) {
             super(itemView);
+            videoThumbnail = itemView.findViewById(R.id.video_thumbnail);
             videoName = itemView.findViewById(R.id.video_name);
             videoSize = itemView.findViewById(R.id.video_size);
             videoDate = itemView.findViewById(R.id.video_date);

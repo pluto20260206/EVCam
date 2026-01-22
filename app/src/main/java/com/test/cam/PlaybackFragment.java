@@ -10,6 +10,8 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -28,6 +30,7 @@ public class PlaybackFragment extends Fragment {
     private RecyclerView videoList;
     private TextView emptyText;
     private Button btnRefresh;
+    private Button btnMenu;
     private VideoAdapter adapter;
     private List<File> videoFiles = new ArrayList<>();
 
@@ -39,12 +42,27 @@ public class PlaybackFragment extends Fragment {
         videoList = view.findViewById(R.id.video_list);
         emptyText = view.findViewById(R.id.empty_text);
         btnRefresh = view.findViewById(R.id.btn_refresh);
+        btnMenu = view.findViewById(R.id.btn_menu);
 
         // 设置RecyclerView
         videoList.setLayoutManager(new LinearLayoutManager(getContext()));
         adapter = new VideoAdapter(getContext(), videoFiles);
         adapter.setOnVideoDeleteListener(this::updateVideoList);
         videoList.setAdapter(adapter);
+
+        // 菜单按钮
+        btnMenu.setOnClickListener(v -> {
+            if (getActivity() != null) {
+                DrawerLayout drawerLayout = getActivity().findViewById(R.id.drawer_layout);
+                if (drawerLayout != null) {
+                    if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                        drawerLayout.closeDrawer(GravityCompat.START);
+                    } else {
+                        drawerLayout.openDrawer(GravityCompat.START);
+                    }
+                }
+            }
+        });
 
         // 刷新按钮
         btnRefresh.setOnClickListener(v -> updateVideoList());

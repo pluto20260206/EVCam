@@ -11,8 +11,25 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:padding="12dp">
+
+        <!-- 视频缩略图 -->
+        <ImageView
+            android:id="@+id/video_thumbnail"
+            android:layout_width="120dp"
+            android:layout_height="80dp"
+            android:scaleType="centerCrop"
+            android:background="#000000"
+            android:contentDescription="视频缩略图" />
+
+        <!-- 视频信息 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
 
         <TextView
             android:id="@+id/video_name"
@@ -69,6 +86,8 @@
                 android:layout_marginStart="4dp"
                 android:text="删除"
                 android:textSize="12sp" />
+        </LinearLayout>
+
         </LinearLayout>
     </LinearLayout>
 
